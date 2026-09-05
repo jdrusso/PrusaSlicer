@@ -3,6 +3,7 @@
 ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 ///|/
 #include "PhysicalPrinterDialog.hpp"
+#include "slic3r/Utils/ProfileSync.hpp"
 #include "PresetComboBoxes.hpp"
 
 #include <cstddef>
@@ -975,6 +976,7 @@ void PhysicalPrinterDialog::OnOK(wxEvent& event)
 
     // save new physical printer
     printers.save_printer(m_printer, renamed_from);
+    ProfileSync::notify_change("Save physical printer \"" + m_printer.name + "\"");
 
     if (m_printer.preset_names.find(printers.get_selected_printer_preset_name()) == m_printer.preset_names.end()) {
         // select first preset for this printer

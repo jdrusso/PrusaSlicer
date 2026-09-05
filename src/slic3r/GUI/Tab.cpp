@@ -32,6 +32,7 @@
 #include "libslic3r/CustomParametersHandling.hpp"
 
 #include "slic3r/Utils/Http.hpp"
+#include "slic3r/Utils/ProfileSync.hpp"
 #include "slic3r/Utils/PrintHost.hpp"
 #include "BonjourDialog.hpp"
 #include "WipeTowerDialog.hpp"
@@ -4380,6 +4381,7 @@ void Tab::save_preset(std::string name /*= ""*/, bool detach)
 
     // Save the preset into Slic3r::data_dir / presets / section_name / preset_name.ini
     save_current_preset(name, detach);
+    ProfileSync::notify_change("Save " + m_presets->name() + " preset \"" + name + "\"");
 
     if (detach && m_type == Preset::TYPE_PRINTER)
         wxGetApp().mainframe->on_config_changed(m_config);
@@ -4503,6 +4505,7 @@ void Tab::rename_preset()
         // rename file with renamed preset configuration
 
         filesystem::rename(old_file_name, selected_preset.file);
+        ProfileSync::notify_change("Rename " + m_presets->name() + " preset \"" + old_name + "\" to \"" + new_name + "\"");
 
         // rename selected preset in printers, if it's needed
 
@@ -4616,6 +4619,7 @@ void Tab::delete_preset()
     // Select will handle of the preset dependencies, of saving & closing the depending profiles, and
     // finally of deleting the preset.
     this->select_preset("", true);
+    ProfileSync::notify_change("Delete " + m_presets->name() + " preset \"" + current_preset.name + "\"");
 }
 
 void Tab::toggle_show_hide_incompatible()
