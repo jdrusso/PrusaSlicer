@@ -453,6 +453,30 @@ else()
     target_link_libraries(libcurl INTERFACE crypt32)
 endif()
 
+# libgit2 (profile sync). Built statically by deps/+libgit2. libgit2 >= 1.8 installs a CMake
+# package (target libgit2::libgit2package, carrying its own system libs); older/other installs
+# are picked up by cmake/modules/Findlibgit2.cmake (target libgit2::libgit2).
+find_package(libgit2 CONFIG QUIET)
+if (NOT TARGET libgit2::libgit2package)
+    find_package(libgit2 MODULE REQUIRED)
+endif ()
+add_library(libgit2_iface INTERFACE)
+if (TARGET libgit2::libgit2package)
+    target_link_libraries(libgit2_iface INTERFACE libgit2::libgit2package)
+else ()
+    target_link_libraries(libgit2_iface INTERFACE libgit2::libgit2)
+    if (WIN32)
+        target_link_libraries(libgit2_iface INTERFACE winhttp rpcrt4 crypt32 ole32 secur32 ws2_32)
+    elseif (APPLE)
+        target_link_libraries(libgit2_iface INTERFACE "-framework Security" "-framework CoreFoundation" iconv)
+    else ()
+        find_package(OpenSSL REQUIRED)
+        target_link_libraries(libgit2_iface INTERFACE OpenSSL::SSL OpenSSL::Crypto)
+    endif ()
+    find_package(ZLIB REQUIRED)
+    target_link_libraries(libgit2_iface INTERFACE ZLIB::ZLIB)
+endif ()
+
 ## OPTIONAL packages
 
 # Find expat. We have our overriden FindEXPAT which exports libexpat target

@@ -1,0 +1,18 @@
+From: PrusaSlicer profile-sync fork
+Subject: [PATCH] win32: do not pop up a console window for spawned processes
+
+libgit2 exec SSH transport spawns ssh.exe; from a GUI app that flashes an
+empty console window per fetch/push. Its stdio is piped, so create the child
+without a console.
+
+--- a/src/util/win32/process.c	2025-06-06 09:26:15
++++ b/src/util/win32/process.c
+@@ -254,7 +254,7 @@
+ {
+ 	STARTUPINFOW startup_info;
+ 	SECURITY_ATTRIBUTES security_attrs;
+-	DWORD flags = CREATE_UNICODE_ENVIRONMENT;
++	DWORD flags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+ 	HANDLE in[2]  = { NULL, NULL },
+ 	       out[2] = { NULL, NULL },
+ 	       err[2] = { NULL, NULL };

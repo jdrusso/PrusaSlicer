@@ -406,6 +406,10 @@ set(SLIC3R_GUI_SOURCES
     Utils/PrusaConnect.cpp
     Utils/ServiceConfig.hpp
     Utils/ServiceConfig.cpp
+    Utils/ProfileSync.hpp
+    Utils/ProfileSync.cpp
+    GUI/ProfileSyncDialog.hpp
+    GUI/ProfileSyncDialog.cpp
 )
 
 find_package(NanoSVG REQUIRED)
@@ -463,6 +467,7 @@ target_link_libraries(
     OpenGL::GL
     hidapi
     libcurl
+    libgit2_iface
     ${wxWidgets_LIBRARIES}
     NanoSVG::nanosvg
     NanoSVG::nanosvgrast
