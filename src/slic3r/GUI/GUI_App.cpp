@@ -83,6 +83,8 @@
 #include "../Utils/WinRegistry.hpp"
 #include "slic3r/Config/Snapshot.hpp"
 #include "ConfigSnapshotDialog.hpp"
+#include "ProfileSyncDialog.hpp"
+#include "slic3r/Utils/ProfileSync.hpp"
 #include "FirmwareDialog.hpp"
 #include "slic3r/GUI/Preferences.hpp" // IWYU pragma: keep
 #include "Tab.hpp"
@@ -890,6 +892,7 @@ GUI_App::GUI_App(EAppMode mode)
 
 GUI_App::~GUI_App()
 {
+    ProfileSync::flush_pending();
     delete app_config;
     delete preset_bundle;
 }
@@ -1624,6 +1627,9 @@ bool GUI_App::on_init_inner()
 
     // Save the active profiles as a "saved into project".
     update_saved_preset_from_current_preset();
+
+    if (is_editor())
+        ProfileSync::pull_on_launch();
 
     if (plater_ != nullptr) {
         // Save the names of active presets and project specific config into ProjectDirtyStateManager.
@@ -2724,6 +2730,8 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
         local_menu->Append(config_id_base + ConfigMenuWizard, config_wizard_name + dots, config_wizard_tooltip);
         local_menu->Append(config_id_base + ConfigMenuSnapshots, _L("&Configuration Snapshots") + dots, _L("Inspect / activate configuration snapshots"));
         local_menu->Append(config_id_base + ConfigMenuTakeSnapshot, _L("Take Configuration &Snapshot"), _L("Capture a configuration snapshot"));
+        local_menu->Append(config_id_base + ConfigMenuProfileSync, _L("Profile S&ync") + dots, _L("Share profiles between computers via git and browse their history"));
+        local_menu->Append(config_id_base + ConfigMenuProfileSyncNow, _L("Sync Profiles Now"), _L("Record, pull and push profile changes now"));
         local_menu->Append(config_id_base + ConfigMenuUpdateConf, _L("Check for Configuration Updates"), _L("Check for configuration updates"));
         local_menu->Append(config_id_base + ConfigMenuUpdateApp, _L("Check for Application Updates"), _L("Check for new version of application"));
 #if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
@@ -2783,6 +2791,26 @@ wxMenu* GUI_App::get_config_menu(MainFrame* main_frame)
                             *app_config, Config::Snapshot::SNAPSHOT_USER, dlg.GetValue().ToUTF8().data());
                         snapshot != nullptr)
                         app_config->set("on_snapshot", snapshot->id);
+            }
+            break;
+        case ConfigMenuProfileSync:
+            if (check_and_save_current_preset_changes(_L("Profile sync"), _L("Some presets are modified and the unsaved changes will not be synced."), false, true)) {
+                ProfileSyncDialog dlg(mainframe);
+                dlg.ShowModal();
+            }
+            break;
+        case ConfigMenuProfileSyncNow:
+            if (!ProfileSync::is_enabled()) {
+                ProfileSyncDialog dlg(mainframe);
+                dlg.ShowModal();
+            } else if (check_and_save_current_preset_changes(_L("Profile sync"), _L("Some presets are modified and the unsaved changes will not be synced."), false, true)) {
+                ProfileSync::Settings s = ProfileSync::settings();
+                ProfileSync::run_async([s] { ProfileSync::repo().ensure_initialized(s); return ProfileSync::repo().sync(s, "Sync from " + s.machine_name); },
+                    [this](ProfileSync::SyncResult r) {
+                        if (!r.ok) { show_error(nullptr, _L("Profile sync failed:") + "\n" + from_u8(r.message)); return; }
+                        if (r.pulled_changes) reload_presets_from_disk();
+                        if (plater_) plater_->get_notification_manager()->push_notification(NotificationType::CustomNotification, NotificationManager::NotificationLevel::RegularNotificationLevel, _u8L("Profile sync: ") + r.message);
+                    });
             }
             break;
         case ConfigMenuSnapshots:
@@ -3120,6 +3148,22 @@ bool GUI_App::checked_tab(Tab* tab)
 }
 
 // Update UI / Tabs to reflect changes in the currently loaded presets
+void GUI_App::reload_presets_from_disk()
+{
+    if (!is_editor() || preset_bundle == nullptr) return;
+    try {
+        // A checkout may have removed preset directories that became empty; load_presets() needs them.
+        for (const char *sub : { "print", "sla_print", "filament", "sla_material", "printer", "physical_printer", "vendor", "shapes" })
+            boost::filesystem::create_directories(boost::filesystem::path(data_dir()) / sub);
+        if (PresetsConfigSubstitutions all_substitutions = preset_bundle->load_presets(*app_config, ForwardCompatibilitySubstitutionRule::Enable);
+            ! all_substitutions.empty())
+            show_substitutions_info(all_substitutions);
+        load_current_presets();
+    } catch (std::exception &ex) {
+        show_error(nullptr, _L("Failed to reload profiles after sync.") + "\n" + into_u8(ex.what()));
+    }
+}
+
 void GUI_App::load_current_presets(bool check_printer_presets_ /*= true*/)
 {
     // check printer_presets for the containing information about "Print Host upload"

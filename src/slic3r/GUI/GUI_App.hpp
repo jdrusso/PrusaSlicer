@@ -104,6 +104,8 @@ enum ConfigMenuIDs {
     ConfigMenuModeExpert,
     ConfigMenuLanguage,
     ConfigMenuFlashFirmware,
+    ConfigMenuProfileSync,
+    ConfigMenuProfileSyncNow,
     ConfigMenuCnt,
     ConfigMenuWifiConfigFile
 };
@@ -320,6 +322,8 @@ public:
     bool            check_print_host_queue();
     bool            checked_tab(Tab* tab);
     void            load_current_presets(bool check_printer_presets = true);
+    // Re-reads all presets from data_dir (after profile sync changed files on disk) and refreshes the GUI.
+    void            reload_presets_from_disk();
 
     wxString        current_language_code() const { return m_wxLocale->GetCanonicalName(); }
 	// Translate the language code to a code, for which Prusa Research maintains translations. Defaults to "en_US".
