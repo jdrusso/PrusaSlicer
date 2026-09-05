@@ -1,0 +1,77 @@
+# Keeps `main` current with upstream PrusaSlicer *stable releases* while
+# preserving the fork's changes.
+#
+# Differs from the OctoPrint fork's rebase-on-upstream job on purpose:
+#  - follows upstream release tags (version_X.Y.Z), not the master branch;
+#  - merges instead of rebasing, so `main` is never force-pushed and clones on
+#    other machines keep fast-forwarding;
+#  - on a merge conflict it stops and opens a Gitea issue with the details
+#    instead of failing silently.
+name: Track upstream releases
+
+on:
+  schedule:
+    - cron: '17 5 * * *'   # daily, 05:17
+  workflow_dispatch:
+
+jobs:
+  merge-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITEATOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "gitea-actions"
+          git config user.email "gitea-actions@localhost"
+
+      - name: Find newest upstream stable tag
+        id: up
+        run: |
+          git remote add upstream https://github.com/prusa3d/PrusaSlicer.git
+          git fetch --tags upstream
+          # Stable releases only: version_X.Y.Z (no -alpha/-beta/-rc suffixes).
+          latest=$(git tag -l 'version_*' | grep -E '^version_[0-9]+\.[0-9]+\.[0-9]+$' | sort -t_ -k2 -V | tail -1)
+          # Already merged? Then nothing to do.
+          if git merge-base --is-ancestor "$latest" HEAD; then
+            echo "up-to-date at $latest"; echo "tag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "new upstream release: $latest"; echo "tag=$latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge
+        id: merge
+        if: steps.up.outputs.tag != ''
+        run: |
+          set +e
+          git merge --no-edit "${{ steps.up.outputs.tag }}"
+          rc=$?
+          set -e
+          if [ $rc -ne 0 ]; then
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push
+        if: steps.up.outputs.tag != '' && steps.merge.outputs.conflict == 'false'
+        run: |
+          git push origin main "${{ steps.up.outputs.tag }}"
+
+      - name: Open issue on conflict
+        if: steps.up.outputs.tag != '' && steps.merge.outputs.conflict == 'true'
+        env:
+          TOKEN: ${{ secrets.GITEATOKEN }}
+        run: |
+          body="Merging upstream \`${{ steps.up.outputs.tag }}\` into \`main\` conflicts in:\n\n\`\`\`\n$(cat conflicts.txt)\n\`\`\`\n\nResolve locally with \`git merge ${{ steps.up.outputs.tag }}\` and push."
+          curl -sf -X POST "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/issues" \
+            -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg t "Upstream ${{ steps.up.outputs.tag }} needs manual merge" --arg b "$(printf "$body")" '{title:$t, body:$b}')"
+          exit 1
