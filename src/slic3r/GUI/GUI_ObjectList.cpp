@@ -1556,6 +1556,10 @@ void ObjectList::load_subobject(ModelVolumeType type, bool from_galery/* = false
     if (input_files.IsEmpty())
         return;
 
+    // Fork: remember where parts/modifiers were added from, like a regular model import does.
+    if (!from_galery)
+        wxGetApp().app_config->update_skein_dir(into_path(input_files.Last()).parent_path().make_preferred().string());
+
     take_snapshot((type == ModelVolumeType::MODEL_PART) ? _L("Load Part") : _L("Load Modifier"));
 
     std::vector<ModelVolume*> volumes;

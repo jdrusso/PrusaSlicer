@@ -120,6 +120,10 @@ public:
 	std::string 		get_last_dir() const;
 	bool 				update_config_dir(const std::string &dir);
 	bool 				update_skein_dir(const std::string &dir);
+	// Fork: recent/project_directory, where projects were last opened or saved. Kept apart from
+	// skein_directory so the "Add/Import" dialog and the "Save project" dialog each remember their own folder.
+	std::string 		get_last_project_dir() const { return this->get("recent", "project_directory"); }
+	bool 				update_project_dir(const std::string &dir);
 
 	//std::string 		get_last_output_dir(const std::string &alt) const;
 	//void                update_last_output_dir(const std::string &dir);

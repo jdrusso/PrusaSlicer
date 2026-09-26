@@ -2302,9 +2302,13 @@ void GUI_App::persist_window_geometry(wxTopLevelWindow *window, bool default_max
 void GUI_App::load_project(wxWindow *parent, wxString& input_file) const
 {
     input_file.Clear();
+    // Fork: open projects from where projects live, not from the model import folder.
+    std::string start_dir = app_config->get_last_project_dir();
+    if (start_dir.empty())
+        start_dir = app_config->get_last_dir();
     wxFileDialog dialog(parent ? parent : GetTopWindow(),
         _L("Choose one file (3MF/AMF):"),
-        app_config->get_last_dir(), "",
+        from_u8(start_dir), "",
         file_wildcards(FT_PROJECT), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
 
     if (dialog.ShowModal() == wxID_OK)

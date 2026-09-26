@@ -707,6 +707,13 @@ bool AppConfig::update_skein_dir(const std::string &dir)
     return this->set("recent", "skein_directory", dir);
 }
 
+bool AppConfig::update_project_dir(const std::string &dir)
+{
+    if (is_shapes_dir(dir))
+        return false;
+    return this->set("recent", "project_directory", dir);
+}
+
 std::string AppConfig::get_last_output_dir(const std::string& alt, const bool removable) const
 {
 	std::string s1 = (removable ? "last_output_path_removable" : "last_output_path");

@@ -1375,7 +1375,8 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
     int answer_consider_as_multi_part_objects = wxOK_DEFAULT;
     bool apply_step_import_parameters_to_all   { false }; 
 
-    bool in_temp = false; 
+    bool in_temp = false;
+    bool last_is_project = false;
     const fs::path temp_path = wxStandardPaths::Get().GetTempDir().utf8_str().data();
 
     size_t input_files_size = input_files.size();
@@ -1427,6 +1428,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
 
         Slic3r::Model model;
         bool is_project_file = false;
+        last_is_project = false;
 
 #ifdef __linux__
         // On Linux Constructor of the ProgressDialog calls DisableOtherWindows() function which causes a disabling of all children of the find_toplevel_parent(q)
@@ -1537,6 +1539,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                 // when for extruder colors are used filament colors
                 q->update_filament_colors_in_full_config();
                 is_project_file = true;
+                last_is_project = true;
             }
 
             this->model.get_custom_gcode_per_print_z_vector() = model.get_custom_gcode_per_print_z_vector();
@@ -1736,7 +1739,12 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
     }
 
     if (load_model && !in_temp) {
-        wxGetApp().app_config->update_skein_dir(input_files[input_files.size() - 1].parent_path().make_preferred().string());
+        // Fork: opening a project remembers the project folder, not the model import folder.
+        const std::string dir = input_files[input_files.size() - 1].parent_path().make_preferred().string();
+        if (last_is_project)
+            wxGetApp().app_config->update_project_dir(dir);
+        else
+            wxGetApp().app_config->update_skein_dir(dir);
         // XXX: Plater.pm had @loaded_files, but didn't seem to fill them with the filenames...
     }
 
@@ -1967,9 +1975,20 @@ wxString Plater::priv::get_export_file(GUI::FileType file_type)
 
     std::string out_dir = (boost::filesystem::path(output_file).parent_path()).string();
     std::string temp_dir = wxStandardPaths::Get().GetTempDir().utf8_str().data();
-    
-    wxFileDialog dlg(q, dlg_title,
-        out_dir == temp_dir ? from_u8(wxGetApp().app_config->get("last_output_path"))  : (is_shapes_dir(out_dir) ? from_u8(wxGetApp().app_config->get_last_dir()) : from_path(output_file.parent_path())), from_path(output_file.filename()),
+
+    wxString start_dir = out_dir == temp_dir ? from_u8(wxGetApp().app_config->get("last_output_path"))  : (is_shapes_dir(out_dir) ? from_u8(wxGetApp().app_config->get_last_dir()) : from_path(output_file.parent_path()));
+    // Fork: a project that was never saved starts in the folder projects were last opened/saved in,
+    // not in the folder its first model was imported from.
+    if (file_type == FT_3MF && get_project_filename(".3mf").empty()) {
+        std::string project_dir = wxGetApp().app_config->get_last_project_dir();
+        if (project_dir.empty())
+            project_dir = wxGetApp().app_config->get("last_output_path");
+        boost::system::error_code ec;
+        if (!project_dir.empty() && fs::is_directory(into_path(from_u8(project_dir)), ec))
+            start_dir = from_u8(project_dir);
+    }
+
+    wxFileDialog dlg(q, dlg_title, start_dir, from_path(output_file.filename()),
         wildcard, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
 
     if (dlg.ShowModal() != wxID_OK)
@@ -6458,6 +6477,7 @@ bool Plater::export_3mf(const boost::filesystem::path& output_path)
         // Success
         BOOST_LOG_TRIVIAL(info) << "3MF file exported to " << path;
         p->set_project_filename(path);
+        wxGetApp().app_config->update_project_dir(into_path(path).parent_path().make_preferred().string());
     }
     else {
         // Failure
