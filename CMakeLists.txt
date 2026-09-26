@@ -12,6 +12,9 @@ cmake_minimum_required(VERSION 3.13)
 project(PrusaSlicer)
 
 include("version.inc")
+# Fork: PrusaSlicer-Sync release version (X.Y.Z-sync.N), passed in by CI from the git tag. It drives the
+# in-app update check; left empty (local builds) the check is disabled.
+set(SLIC3R_SYNC_VERSION "" CACHE STRING "PrusaSlicer-Sync release version, e.g. 2.9.6-sync.3")
 include(GNUInstallDirs)
 include(CMakeDependentOption)
 

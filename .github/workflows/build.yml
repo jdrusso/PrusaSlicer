@@ -6,7 +6,8 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    # Release tags only; upstream's version_X.Y.Z tags (pushed by the Gitea job) also start with "v".
+    tags: ['v*-sync.*']
   workflow_dispatch:
 
 env:
@@ -15,8 +16,26 @@ env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
+  # ------------------------------------------------------------- version
+  # The vX.Y.Z-sync.N tag at or before this commit, baked into the binaries for the in-app update check.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      sync: ${{ steps.describe.outputs.sync }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # all commits and tags...
+          filter: tree:0     # ...but no historical trees/blobs
+      - id: describe
+        run: |
+          tag=$(git describe --tags --match 'v*-sync.*' --abbrev=0 2>/dev/null || true)
+          echo "sync=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "release version: ${tag#v}"
+
   # ---------------------------------------------------------------- macOS
   macos:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +81,7 @@ jobs:
             -DCMAKE_OSX_SYSROOT="$SDKROOT" \
             -DCMAKE_PREFIX_PATH="$DEPS_DESTDIR/usr/local" \
             -DSLIC3R_STATIC=ON -DSLIC3R_BUILD_TESTS=OFF -DSLIC3R_PCH=ON \
+            -DSLIC3R_SYNC_VERSION="${{ needs.version.outputs.sync }}" \
             -DSLIC3R_BUILD_ID="PrusaSlicer-$(cat version.inc | sed -n 's/.*SLIC3R_VERSION "\(.*\)".*/\1/p')+git-sync.${{ github.run_number }}"
 
       - name: Build
@@ -88,6 +108,7 @@ jobs:
 
   # -------------------------------------------------------------- Windows
   windows:
+    needs: version
     runs-on: windows-2022
     env:
       DEPS_DESTDIR: ${{ github.workspace }}\deps\build\destdir
@@ -121,6 +142,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="%DEPS_DESTDIR%\usr\local" ^
             -DCMAKE_INSTALL_PREFIX="%GITHUB_WORKSPACE%\out\PrusaSlicer" ^
             -DSLIC3R_STATIC=ON -DSLIC3R_BUILD_TESTS=OFF -DSLIC3R_PCH=ON ^
+            -DSLIC3R_SYNC_VERSION="${{ needs.version.outputs.sync }}" ^
             -DSLIC3R_BUILD_ID="PrusaSlicer+git-sync.${{ github.run_number }}" || exit /b 1
 
       - name: Build
@@ -144,6 +166,7 @@ jobs:
 
   # ---------------------------------------------------------------- Linux
   linux:
+    needs: version
     runs-on: ubuntu-22.04
     env:
       DEPS_DESTDIR: ${{ github.workspace }}/deps/build/destdir
@@ -179,6 +202,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DSLIC3R_STATIC=ON -DSLIC3R_GTK=3 -DSLIC3R_BUILD_TESTS=OFF -DSLIC3R_PCH=ON \
             -DSLIC3R_FHS=OFF -DSLIC3R_DESKTOP_INTEGRATION=OFF \
+            -DSLIC3R_SYNC_VERSION="${{ needs.version.outputs.sync }}" \
             -DSLIC3R_BUILD_ID="PrusaSlicer+git-sync.${{ github.run_number }}"
 
       - name: Build
@@ -207,8 +231,8 @@ jobs:
 
   # -------------------------------------------------------------- Release
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-sync.')
+    needs: [version, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -217,6 +241,19 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Version file for the in-app update check
+        # Read by the app from releases/latest/download/PrusaSlicer-Sync.version (AppConfig.cpp), in the
+        # format AppUpdater::priv::parse_version_string() expects. "browser" opens the release page.
+        run: |
+          page="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          {
+            echo "[common]"
+            echo "release = ${{ needs.version.outputs.sync }}"
+            for os in win64 osx linux; do
+              printf '\n[release:%s]\nurl = %s\naction = browser\n' "$os" "$page"
+            done
+          } > dist/PrusaSlicer-Sync.version
+          cat dist/PrusaSlicer-Sync.version
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

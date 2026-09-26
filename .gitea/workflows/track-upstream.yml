@@ -62,8 +62,14 @@ jobs:
 
       - name: Push
         if: steps.up.outputs.tag != '' && steps.merge.outputs.conflict == 'false'
+        env:
+          TAG: ${{ steps.up.outputs.tag }}
         run: |
-          git push origin main "${{ steps.up.outputs.tag }}"
+          # Tag the first fork release on the new upstream version. Once mirrored, GitHub builds it and
+          # publishes a release, and running copies get the "new version available" prompt.
+          release="v${TAG#version_}-sync.1"
+          git tag -a "$release" -m "PrusaSlicer ${TAG#version_} + profile sync"
+          git push origin main "$TAG" "$release"
 
       - name: Open issue on conflict
         if: steps.up.outputs.tag != '' && steps.merge.outputs.conflict == 'true'

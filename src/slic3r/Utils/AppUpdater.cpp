@@ -5,7 +5,10 @@
 ///|/
 #include "AppUpdater.hpp"
 
+#include <array>
 #include <atomic>
+#include <optional>
+#include <regex>
 #include <thread>
 #include <string>
 
@@ -103,7 +106,29 @@ namespace {
 		return std::string();
 	}
 #endif // _WIN32 / __apple__ / else
+
+// Fork: "2.9.6-sync.3" (optionally with a leading 'v') -> {2, 9, 6, 3}.
+std::optional<std::array<int, 4>> parse_sync_version(const std::string &version)
+{
+	static const std::regex re(R"(^v?(\d+)\.(\d+)\.(\d+)-sync\.(\d+)$)");
+	std::smatch m;
+	if (!std::regex_match(version, m, re))
+		return std::nullopt;
+	return std::array<int, 4>{ std::stoi(m[1]), std::stoi(m[2]), std::stoi(m[3]), std::stoi(m[4]) };
+}
 } // namespace
+
+bool is_sync_version(const std::string &version)
+{
+	return parse_sync_version(version).has_value();
+}
+
+bool sync_version_is_newer(const std::string &online, const std::string &current)
+{
+	const auto o = parse_sync_version(online);
+	const auto c = parse_sync_version(current);
+	return o && c && *c < *o;
+}
 
 wxDEFINE_EVENT(EVT_SLIC3R_VERSION_ONLINE, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);

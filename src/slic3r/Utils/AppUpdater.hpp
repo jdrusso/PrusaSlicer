@@ -66,6 +66,12 @@ private:
 	std::unique_ptr<priv> p;
 };
 
+// Fork: PrusaSlicer-Sync releases are versioned X.Y.Z-sync.N: the upstream version they are built on plus a
+// fork release counter. Plain Semver would order 2.9.6-sync.2 before 2.9.6, hence these helpers.
+bool is_sync_version(const std::string &version);
+// True when `online` is a later PrusaSlicer-Sync release than `current`.
+bool sync_version_is_newer(const std::string &online, const std::string &current);
+
 wxDECLARE_EVENT(EVT_SLIC3R_VERSION_ONLINE, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SLIC3R_APP_DOWNLOAD_PROGRESS, wxCommandEvent);

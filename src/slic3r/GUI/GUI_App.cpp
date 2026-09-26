@@ -3794,14 +3794,16 @@ void GUI_App::on_version_read(wxCommandEvent& evt)
         BOOST_LOG_TRIVIAL(info) << "Version online: " << evt.GetString() << ". User does not wish to be notified.";
         return;
     }
-    if (*Semver::parse(SLIC3R_VERSION) >= *Semver::parse(into_u8(evt.GetString()))) {
+    // Fork: compare PrusaSlicer-Sync release versions (X.Y.Z-sync.N), not the upstream version number.
+    const std::string version_online = into_u8(evt.GetString());
+    if (!sync_version_is_newer(version_online, SLIC3R_SYNC_VERSION)) {
         if (m_app_updater->get_triggered_by_user())
         {
-            std::string text = (*Semver::parse(into_u8(evt.GetString())) == Semver()) 
+            std::string text = !is_sync_version(version_online)
                 ? _u8L("Check for application update has failed.")
                 : Slic3r::format(_u8L("You are currently running the latest released version %1%."), evt.GetString());
 
-            if (*Semver::parse(SLIC3R_VERSION) > *Semver::parse(into_u8(evt.GetString())))
+            if (sync_version_is_newer(SLIC3R_SYNC_VERSION, version_online))
                 text = Slic3r::format(_u8L("There are no new released versions online. The latest release version is %1%."), evt.GetString());
 
             this->plater_->get_notification_manager()->push_version_notification(NotificationType::NoNewReleaseAvailable
@@ -3831,7 +3833,7 @@ void GUI_App::app_updater(bool from_user)
 {
     DownloadAppData app_data = m_app_updater->get_app_data();
 
-    if (from_user && (!app_data.version || *app_data.version <= *Semver::parse(SLIC3R_VERSION)))
+    if (from_user && (!app_data.version || !sync_version_is_newer(app_data.version->to_string(), SLIC3R_SYNC_VERSION)))
     {
         BOOST_LOG_TRIVIAL(info) << "There is no newer version online.";
         MsgNoAppUpdates no_update_dialog;
@@ -3844,7 +3846,7 @@ void GUI_App::app_updater(bool from_user)
     assert(!app_data.target_path.empty());
 
     // dialog with new version info
-    AppUpdateAvailableDialog dialog(*Semver::parse(SLIC3R_VERSION), *app_data.version, from_user, app_data.action == AppUpdaterURLAction::AUUA_OPEN_IN_BROWSER);
+    AppUpdateAvailableDialog dialog(*Semver::parse(SLIC3R_SYNC_VERSION), *app_data.version, from_user, app_data.action == AppUpdaterURLAction::AUUA_OPEN_IN_BROWSER);
     auto dialog_result = dialog.ShowModal();
     // checkbox "do not show again"
     if (dialog.disable_version_check()) {
@@ -3881,6 +3883,13 @@ void GUI_App::app_version_check(bool from_user)
             if (msgdlg.ShowModal() != wxID_YES)
                 return;
         }
+    }
+    // Fork: a build without a release version (a local build) cannot tell whether a release is newer.
+    if (!is_sync_version(SLIC3R_SYNC_VERSION)) {
+        BOOST_LOG_TRIVIAL(info) << "Not a PrusaSlicer-Sync release build, skipping the application update check.";
+        if (from_user)
+            show_info(nullptr, _L("This build has no release version, so it cannot check for updates."), _L("Check for application update"));
+        return;
     }
     std::string version_check_url = app_config->version_check_url();
     m_app_updater->sync_version(version_check_url, from_user);
