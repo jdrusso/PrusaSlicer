@@ -1535,7 +1535,26 @@ bool GUI_App::on_init_inner()
 
         Bind(EVT_SLIC3R_APP_OPEN_FAILED, [](const wxCommandEvent& evt) {
             show_error(nullptr, evt.GetString());
-        }); 
+        });
+
+#ifdef _WIN32
+        // Fork: one-click update. The installer replaces this program's files, so close PrusaSlicer first
+        // (with the usual prompts about unsaved changes), then run the installer silently. It waits for this
+        // process to exit and starts PrusaSlicer again when it is done.
+        Bind(EVT_SLIC3R_APP_INSTALLER_READY, [this](const wxCommandEvent& evt) {
+            const boost::filesystem::path installer = into_path(evt.GetString());
+            if (this->plater_ != nullptr)
+                this->plater_->get_notification_manager()->close_notification_of_type(NotificationType::AppDownload);
+            if (this->mainframe == nullptr || !this->mainframe->Close(false)) {
+                show_info(nullptr, format_wxstr(_L("The update was downloaded to\n%1%\n\nRun it after closing %2% to install it."), from_path(installer), SLIC3R_APP_NAME),
+                    _L("Update downloaded"));
+                return;
+            }
+            std::string error;
+            if (!create_process(installer, L"/SILENT /SP- /SUPPRESSMSGBOXES /NOCANCEL /WAITPID=" + std::to_wstring(wxGetProcessId()), error))
+                show_error(nullptr, error);
+        });
+#endif // _WIN32
 
         Bind(EVT_CONFIG_UPDATER_SYNC_DONE, [this](const wxCommandEvent& evt) {
             this->check_updates(false);
@@ -3860,6 +3879,12 @@ void GUI_App::app_updater(bool from_user)
         open_browser_with_warning_dialog(from_u8(app_data.url), nullptr, false);
         return;
     }
+#ifdef _WIN32
+    // Fork: one-click update. No download dialog: fetch the installer to the temp folder and run it
+    // (see EVT_SLIC3R_APP_INSTALLER_READY).
+    app_data.target_path = into_path(wxStandardPaths::Get().GetTempDir()) / app_data.target_path.filename();
+    app_data.start_after = true;
+#else
     // dialog with new version download (installer or app dependent on system) including path selection
     AppUpdateDownloadDialog dwnld_dlg(*app_data.version, app_data.target_path);
     dialog_result = dwnld_dlg.ShowModal();
@@ -3868,9 +3893,10 @@ void GUI_App::app_updater(bool from_user)
         return;
     }
     app_data.target_path =dwnld_dlg.get_download_path();
+    app_data.start_after = dwnld_dlg.run_after_download();
+#endif // _WIN32
     // start download
     this->plater_->get_notification_manager()->push_download_progress_notification(GUI::format(_L("Downloading %1%"), app_data.target_path.filename().string()), std::bind(&AppUpdater::cancel_callback, this->m_app_updater.get()));
-    app_data.start_after = dwnld_dlg.run_after_download();
     m_app_updater->set_app_data(std::move(app_data));
     m_app_updater->sync_download();
 }

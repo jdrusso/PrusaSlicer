@@ -121,6 +121,13 @@ AppUpdateAvailableDialog::AppUpdateAvailableDialog(const Semver& ver_current, co
         content_sizer->Add(new wxStaticText(this, wxID_ANY, _L("Clicking \'Next\' will open a browser window where you can select which variant of PrusaSlicer you want to download.")));
         content_sizer->AddSpacer(VERT_SPACING);
     }
+#ifdef _WIN32
+    else {
+        // Fork: see GUI_App's EVT_SLIC3R_APP_INSTALLER_READY handler.
+        content_sizer->Add(new wxStaticText(this, wxID_ANY, format_wxstr(_L("Clicking \'Next\' will download the update, close %1%, install the update and start %1% again."), SLIC3R_APP_NAME)));
+        content_sizer->AddSpacer(VERT_SPACING);
+    }
+#endif // _WIN32
 
 	AUAD_size = content_sizer->GetSize();
 	

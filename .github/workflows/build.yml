@@ -156,13 +156,30 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item build\src\Release\*.exe $out
           Copy-Item build\src\Release\*.dll $out
+          # App-local MSVC runtime, so the app runs without the VC++ redistributable installed.
+          if ($env:VCToolsRedistDir) { Copy-Item "$env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\*.dll" $out }
+          else { Write-Warning "VCToolsRedistDir not set; not bundling the MSVC runtime" }
           Copy-Item -Recurse resources "$out\resources"
           Compress-Archive -Path $out -DestinationPath PrusaSlicer-windows-x64.zip
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; if ($LASTEXITCODE) { exit 1 } }
+          & $iscc /Qp "/DAppVersion=${{ needs.version.outputs.sync }}" "/DSourceDir=$PWD\out\PrusaSlicer" `
+            "/O$PWD" packaging\windows\PrusaSlicer-Sync.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
         with:
           name: PrusaSlicer-windows-x64
           path: PrusaSlicer-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrusaSlicer-Sync-Setup-x64
+          path: PrusaSlicer-Sync-Setup-x64.exe
 
   # ---------------------------------------------------------------- Linux
   linux:
@@ -243,14 +260,17 @@ jobs:
           merge-multiple: true
       - name: Version file for the in-app update check
         # Read by the app from releases/latest/download/PrusaSlicer-Sync.version (AppConfig.cpp), in the
-        # format AppUpdater::priv::parse_version_string() expects. "browser" opens the release page.
+        # format AppUpdater::priv::parse_version_string() expects. Windows downloads and runs the installer
+        # (size must match exactly); elsewhere "browser" opens the release page.
         run: |
-          page="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          base="${{ github.server_url }}/${{ github.repository }}/releases"
+          setup=PrusaSlicer-Sync-Setup-x64.exe
           {
             echo "[common]"
             echo "release = ${{ needs.version.outputs.sync }}"
-            for os in win64 osx linux; do
-              printf '\n[release:%s]\nurl = %s\naction = browser\n' "$os" "$page"
+            printf '\n[release:win64]\nurl = %s\nsize = %s\n' "$base/download/${{ github.ref_name }}/$setup" "$(stat -c %s "dist/$setup")"
+            for os in osx linux; do
+              printf '\n[release:%s]\nurl = %s\naction = browser\n' "$os" "$base/tag/${{ github.ref_name }}"
             done
           } > dist/PrusaSlicer-Sync.version
           cat dist/PrusaSlicer-Sync.version

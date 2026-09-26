@@ -77,5 +77,7 @@ wxDECLARE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SLIC3R_APP_DOWNLOAD_PROGRESS, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SLIC3R_APP_DOWNLOAD_FAILED, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SLIC3R_APP_OPEN_FAILED, wxCommandEvent);
+// Fork: the downloaded installer (path in the event string) is ready to run.
+wxDECLARE_EVENT(EVT_SLIC3R_APP_INSTALLER_READY, wxCommandEvent);
 } //namespace Slic3r 
 #endif

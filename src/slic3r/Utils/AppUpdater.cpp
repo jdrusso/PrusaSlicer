@@ -135,6 +135,7 @@ wxDEFINE_EVENT(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SLIC3R_APP_DOWNLOAD_PROGRESS, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SLIC3R_APP_DOWNLOAD_FAILED, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SLIC3R_APP_OPEN_FAILED, wxCommandEvent);
+wxDEFINE_EVENT(EVT_SLIC3R_APP_INSTALLER_READY, wxCommandEvent);
 
 // priv handles all operations in separate thread
 // 1) download version file and parse it.
@@ -624,7 +625,16 @@ void AppUpdater::sync_download()
 			p->m_download_ongoing = true;
 			if (boost::filesystem::path dest_path = p->download_file(input_data); boost::filesystem::exists(dest_path)){
 				if (input_data.start_after) {
+#ifdef _WIN32
+					// Fork: the GUI closes PrusaSlicer before running the installer that replaces its files.
+					if (wxApp::GetInstance() != nullptr) {
+						wxCommandEvent* evt = new wxCommandEvent(EVT_SLIC3R_APP_INSTALLER_READY);
+						evt->SetString(GUI::from_path(dest_path));
+						GUI::wxGetApp().QueueEvent(evt);
+					}
+#else
 					p->run_downloaded_file(std::move(dest_path));
+#endif // _WIN32
 				} else {
 					GUI::desktop_open_folder(dest_path.parent_path());
 				}
