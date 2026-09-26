@@ -278,3 +278,6 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          # "Latest" (which the update check reads) goes to the newest version, not to whichever
+          # release finished building last.
+          make_latest: legacy
